@@ -17,6 +17,12 @@ struct MainTabView: View {
                     Label("Camera", systemImage: "camera")
                 }
                 .tag(0)
+
+            LibraryView()
+                .tabItem {
+                    Label("Library", systemImage: "books.vertical")
+                }
+                .tag(1)
         }
     }
 }
