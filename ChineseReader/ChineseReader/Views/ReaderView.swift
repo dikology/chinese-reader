@@ -13,12 +13,16 @@ struct ReaderView: View {
     
     let text: CapturedText
     
+    @State private var showingDictionary = false
     @State private var selectedWord: WordToken?
+    @State private var dictionaryEntries: [DictionaryEntry] = []
+    @State private var isLoadingDictionary = false
     @State private var showPinyin = false
     @State private var fontSize: CGFloat = 18
 
     private let segmentationService = TextSegmentationService()
-
+    private let dictionaryService = DictionaryService()
+    
     var words: [WordToken] {
         segmentationService.segmentText(text.content, language: text.language)
     }
@@ -33,7 +37,7 @@ struct ReaderView: View {
                     fontSize: fontSize,
                     onWordTap: { word in
                         selectedWord = word
-                        //lookupWord(word.text)
+                        lookupWord(word.text)
                     }
                 )
                 .padding()
@@ -56,7 +60,41 @@ struct ReaderView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingDictionary) {
+            if let word = selectedWord {
+                DictionarySheet(
+                    word: word.text,
+                    entries: dictionaryEntries,
+                    isLoading: isLoadingDictionary,
+                )
+            }
+        }
+        .task {
+            // Load dictionary on appear
+            try? await dictionaryService.loadDictionary()
+        }
     }
+
+    private func lookupWord(_ word: String) {
+        isLoadingDictionary = true
+        showingDictionary = true
+        
+        Task {
+            do {
+                let entries = try await dictionaryService.lookup(word: word)
+                await MainActor.run {
+                    dictionaryEntries = entries
+                    isLoadingDictionary = false
+                }
+            } catch {
+                await MainActor.run {
+                    dictionaryEntries = []
+                    isLoadingDictionary = false
+                }
+            }
+        }
+    }
+
 }
 
 // Custom flow layout for text wrapping
@@ -165,6 +203,65 @@ struct WordButton: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+// Dictionary lookup sheet
+struct DictionarySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let word: String
+    let entries: [DictionaryEntry]
+    let isLoading: Bool
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else if entries.isEmpty {
+                    Text("No entries found")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ForEach(entries) { entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(entry.simplified)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                if entry.traditional != entry.simplified {
+                                    Text("(\(entry.traditional))")
+                                        .font(.title3)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Text(entry.pinyin)
+                                .font(.body)
+                                .foregroundColor(.blue)
+                            
+                            ForEach(Array(entry.definitions.enumerated()), id: \.offset) { index, definition in
+                                Text("\(index + 1). \(definition)")
+                                    .font(.body)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                }
+            }
+            .navigationTitle("Dictionary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 
