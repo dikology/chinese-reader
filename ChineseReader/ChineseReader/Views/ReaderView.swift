@@ -35,6 +35,7 @@ struct ReaderView: View {
                     words: words,
                     showPinyin: showPinyin,
                     fontSize: fontSize,
+                    selectedWord: selectedWord,
                     onWordTap: { word in
                         selectedWord = word
                         lookupWord(word.text)
@@ -156,10 +157,11 @@ struct SegmentedTextView: View {
     let words: [WordToken]
     let showPinyin: Bool
     let fontSize: CGFloat
+    let selectedWord: WordToken?
     let onWordTap: (WordToken) -> Void
     
     var body: some View {
-        FlowLayout(spacing: 2) {
+        FlowLayout(spacing: 4) {
             ForEach(words) { word in
                 if word.isWhitespace {
                     Text(word.text)
@@ -168,7 +170,8 @@ struct SegmentedTextView: View {
                     WordButton(
                         text: word.text,
                         showPinyin: showPinyin,
-                        fontSize: fontSize
+                        fontSize: fontSize,
+                        isSelected: selectedWord?.id == word.id
                     ) {
                         onWordTap(word)
                     }
@@ -183,26 +186,78 @@ struct WordButton: View {
     let text: String
     let showPinyin: Bool
     let fontSize: CGFloat
+    let isSelected: Bool
     let action: () -> Void
+    
+    @State private var isPressed = false
     
     var body: some View {
         Button(action: action) {
-            if showPinyin {
-                VStack(spacing: 0) {
-                    Text("pinyin") // TODO: Lookup actual pinyin
-                        .font(.system(size: fontSize * 0.5))
-                        .foregroundColor(.secondary)
+            Group {
+                if showPinyin {
+                    VStack(spacing: 0) {
+                        Text("pinyin") // TODO: Lookup actual pinyin
+                            .font(.system(size: fontSize * 0.5))
+                            .foregroundColor(.secondary)
+                        Text(text)
+                            .font(.system(size: fontSize))
+                            .foregroundColor(.primary)
+                    }
+                } else {
                     Text(text)
                         .font(.system(size: fontSize))
                         .foregroundColor(.primary)
                 }
-            } else {
-                Text(text)
-                    .font(.system(size: fontSize))
-                    .foregroundColor(.primary)
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(borderColor, lineWidth: borderWidth)
+            )
         }
         .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    isPressed = true
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.blue.opacity(0.2)
+        } else if isPressed {
+            return Color.blue.opacity(0.1)
+        } else {
+            return Color.clear
+        }
+    }
+    
+    private var borderColor: Color {
+        if isSelected {
+            return Color.blue
+        } else {
+            return Color.gray.opacity(0.2)
+        }
+    }
+    
+    private var borderWidth: CGFloat {
+        if isSelected {
+            return 1.5
+        } else {
+            return 0.5
+        }
     }
 }
 
