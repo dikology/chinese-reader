@@ -18,13 +18,15 @@
 - Organize texts into books/collections
 - Search across all your content
 
-## Coming Soon Features
-
 ### 📖 Smart Reading
 - Automatic word segmentation using NLTokenizer
 - Tap any word for instant dictionary lookup
-- Pinyin display (optional)
+
+## Coming Soon Features
+
+### 📖 Smart Reading
 - Mark vocabulary difficulty (easy/medium/hard)
+- Pinyin display (optional)
 
 ### 🎥 Video Subtitle Extraction
 - Extract Chinese subtitles from YouTube videos (with available transcripts)

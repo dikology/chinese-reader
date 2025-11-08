@@ -13,14 +13,34 @@ struct ReaderView: View {
     
     let text: CapturedText
     
+    @State private var showingDictionary = false
+    @State private var selectedWord: WordToken?
+    @State private var dictionaryEntries: [DictionaryEntry] = []
+    @State private var isLoadingDictionary = false
+    @State private var showPinyin = false
     @State private var fontSize: CGFloat = 18
+
+    private let segmentationService = TextSegmentationService()
+    private let dictionaryService = DictionaryService()
     
+    var words: [WordToken] {
+        segmentationService.segmentText(text.content, language: text.language)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Reader content
-                Text(text.content)
-                    .font(.system(size: fontSize))
+                SegmentedTextView(
+                    words: words,
+                    showPinyin: showPinyin,
+                    fontSize: fontSize,
+                    selectedWord: selectedWord,
+                    onWordTap: { word in
+                        selectedWord = word
+                        lookupWord(word.text)
+                    }
+                )
                 .padding()
             }
         }
@@ -41,7 +61,41 @@ struct ReaderView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingDictionary) {
+            if let word = selectedWord {
+                DictionarySheet(
+                    word: word.text,
+                    entries: dictionaryEntries,
+                    isLoading: isLoadingDictionary,
+                )
+            }
+        }
+        .task {
+            // Load dictionary on appear
+            try? await dictionaryService.loadDictionary()
+        }
     }
+
+    private func lookupWord(_ word: String) {
+        isLoadingDictionary = true
+        showingDictionary = true
+        
+        Task {
+            do {
+                let entries = try await dictionaryService.lookup(word: word)
+                await MainActor.run {
+                    dictionaryEntries = entries
+                    isLoadingDictionary = false
+                }
+            } catch {
+                await MainActor.run {
+                    dictionaryEntries = []
+                    isLoadingDictionary = false
+                }
+            }
+        }
+    }
+
 }
 
 // Custom flow layout for text wrapping
@@ -94,6 +148,174 @@ struct FlowLayout: Layout {
             }
             
             self.size = CGSize(width: maxWidth, height: y + lineHeight)
+        }
+    }
+}
+
+// View that displays segmented Chinese text with tap interactions
+struct SegmentedTextView: View {
+    let words: [WordToken]
+    let showPinyin: Bool
+    let fontSize: CGFloat
+    let selectedWord: WordToken?
+    let onWordTap: (WordToken) -> Void
+    
+    var body: some View {
+        FlowLayout(spacing: 4) {
+            ForEach(words) { word in
+                if word.isWhitespace {
+                    Text(word.text)
+                        .font(.system(size: fontSize))
+                } else {
+                    WordButton(
+                        text: word.text,
+                        showPinyin: showPinyin,
+                        fontSize: fontSize,
+                        isSelected: selectedWord?.id == word.id
+                    ) {
+                        onWordTap(word)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Individual word button with optional pinyin
+struct WordButton: View {
+    let text: String
+    let showPinyin: Bool
+    let fontSize: CGFloat
+    let isSelected: Bool
+    let action: () -> Void
+    
+    @State private var isPressed = false
+    
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if showPinyin {
+                    VStack(spacing: 0) {
+                        Text("pinyin") // TODO: Lookup actual pinyin
+                            .font(.system(size: fontSize * 0.5))
+                            .foregroundColor(.secondary)
+                        Text(text)
+                            .font(.system(size: fontSize))
+                            .foregroundColor(.primary)
+                    }
+                } else {
+                    Text(text)
+                        .font(.system(size: fontSize))
+                        .foregroundColor(.primary)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(borderColor, lineWidth: borderWidth)
+            )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    isPressed = true
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.blue.opacity(0.2)
+        } else if isPressed {
+            return Color.blue.opacity(0.1)
+        } else {
+            return Color.clear
+        }
+    }
+    
+    private var borderColor: Color {
+        if isSelected {
+            return Color.blue
+        } else {
+            return Color.gray.opacity(0.2)
+        }
+    }
+    
+    private var borderWidth: CGFloat {
+        if isSelected {
+            return 1.5
+        } else {
+            return 0.5
+        }
+    }
+}
+
+// Dictionary lookup sheet
+struct DictionarySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let word: String
+    let entries: [DictionaryEntry]
+    let isLoading: Bool
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else if entries.isEmpty {
+                    Text("No entries found")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ForEach(entries) { entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(entry.simplified)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                if entry.traditional != entry.simplified {
+                                    Text("(\(entry.traditional))")
+                                        .font(.title3)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Text(entry.pinyin)
+                                .font(.body)
+                                .foregroundColor(.blue)
+                            
+                            ForEach(Array(entry.definitions.enumerated()), id: \.offset) { index, definition in
+                                Text("\(index + 1). \(definition)")
+                                    .font(.body)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                }
+            }
+            .navigationTitle("Dictionary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }
