@@ -13,14 +13,29 @@ struct ReaderView: View {
     
     let text: CapturedText
     
+    @State private var selectedWord: WordToken?
+    @State private var showPinyin = false
     @State private var fontSize: CGFloat = 18
-    
+
+    private let segmentationService = TextSegmentationService()
+
+    var words: [WordToken] {
+        segmentationService.segmentText(text.content, language: text.language)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Reader content
-                Text(text.content)
-                    .font(.system(size: fontSize))
+                SegmentedTextView(
+                    words: words,
+                    showPinyin: showPinyin,
+                    fontSize: fontSize,
+                    onWordTap: { word in
+                        selectedWord = word
+                        //lookupWord(word.text)
+                    }
+                )
                 .padding()
             }
         }
@@ -95,6 +110,61 @@ struct FlowLayout: Layout {
             
             self.size = CGSize(width: maxWidth, height: y + lineHeight)
         }
+    }
+}
+
+// View that displays segmented Chinese text with tap interactions
+struct SegmentedTextView: View {
+    let words: [WordToken]
+    let showPinyin: Bool
+    let fontSize: CGFloat
+    let onWordTap: (WordToken) -> Void
+    
+    var body: some View {
+        FlowLayout(spacing: 2) {
+            ForEach(words) { word in
+                if word.isWhitespace {
+                    Text(word.text)
+                        .font(.system(size: fontSize))
+                } else {
+                    WordButton(
+                        text: word.text,
+                        showPinyin: showPinyin,
+                        fontSize: fontSize
+                    ) {
+                        onWordTap(word)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Individual word button with optional pinyin
+struct WordButton: View {
+    let text: String
+    let showPinyin: Bool
+    let fontSize: CGFloat
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            if showPinyin {
+                VStack(spacing: 0) {
+                    Text("pinyin") // TODO: Lookup actual pinyin
+                        .font(.system(size: fontSize * 0.5))
+                        .foregroundColor(.secondary)
+                    Text(text)
+                        .font(.system(size: fontSize))
+                        .foregroundColor(.primary)
+                }
+            } else {
+                Text(text)
+                    .font(.system(size: fontSize))
+                    .foregroundColor(.primary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
