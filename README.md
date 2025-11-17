@@ -120,14 +120,14 @@ Check out issues labeled `good first issue` for beginner-friendly contributions:
 
 ### Version 1.0 (MVP)
 - [x] OCR text capture
-- [ ] Dictionary lookup (CC-CEDICT)
-- [ ] Text segmentation
-- [x] Library management
-- [ ] Vocabulary tracking
+- [x] Dictionary lookup (CC-CEDICT)
+- [x] Text segmentation
+- [ ] Library management
 
 ### Version 2.0
 - [ ] Study groups
 - [ ] Text level and proficiency level assessment
+- [ ] Vocabulary tracking
 
 ### Version 3.0
 - [ ] YouTube subtitle extraction

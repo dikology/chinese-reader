@@ -21,7 +21,19 @@ struct ChineseReaderApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // In production, attempt to recover or use in-memory fallback
+            print("⚠️ Failed to create persistent ModelContainer: \(error)")
+            print("📝 Falling back to in-memory storage")
+            
+            // Fallback to in-memory storage
+            let fallbackConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            do {
+                return try ModelContainer(for: schema, configurations: [fallbackConfig])
+            } catch {
+                // This should never happen with in-memory storage, but if it does,
+                // we have no choice but to crash
+                fatalError("Failed to create even in-memory ModelContainer: \(error)")
+            }
         }
     }()
     
