@@ -20,6 +20,9 @@ struct LibraryView: View {
     @State private var selectedTab = 0
     @State private var searchText = ""
     @State private var showingAddMenu = false
+    @State private var showingNewBookSheet = false
+    @State private var newBookTitle = ""
+    @State private var newBookAuthor = ""
     
     var filteredTexts: [CapturedText] {
         if searchText.isEmpty {
@@ -49,6 +52,28 @@ struct LibraryView: View {
             }
             .navigationTitle("Library")
             .searchable(text: $searchText, prompt: "Search library")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        if selectedTab == 1 {
+                            // Books tab - create new book
+                            showingNewBookSheet = true
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNewBookSheet) {
+                NewBookSheet(
+                    newBookTitle: $newBookTitle,
+                    newBookAuthor: $newBookAuthor,
+                    onCreate: {
+                        createNewBook()
+                        showingNewBookSheet = false
+                    }
+                )
+            }
         }
     }
     
@@ -133,6 +158,59 @@ struct LibraryView: View {
     private func deleteBooks(at offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(allBooks[index])
+        }
+    }
+    
+    private func createNewBook() {
+        guard !newBookTitle.isEmpty else { return }
+        let book = Book(
+            title: newBookTitle,
+            author: newBookAuthor.isEmpty ? nil : newBookAuthor
+        )
+        modelContext.insert(book)
+        
+        do {
+            try modelContext.save()
+            newBookTitle = ""
+            newBookAuthor = ""
+        } catch {
+            print("Error creating book: \(error)")
+        }
+    }
+}
+
+// Sheet for creating a new book
+struct NewBookSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var newBookTitle: String
+    @Binding var newBookAuthor: String
+    let onCreate: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Book Details") {
+                    TextField("Book Title", text: $newBookTitle)
+                    TextField("Author (optional)", text: $newBookAuthor)
+                }
+            }
+            .navigationTitle("New Book")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        newBookTitle = ""
+                        newBookAuthor = ""
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        onCreate()
+                    }
+                    .disabled(newBookTitle.isEmpty)
+                }
+            }
         }
     }
 }

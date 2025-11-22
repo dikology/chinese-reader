@@ -190,6 +190,9 @@ struct SaveTextSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    @Query(sort: \Book.updatedAt, order: .reverse)
+    private var existingBooks: [Book]
+    
     let text: String
     let image: UIImage?
     
@@ -197,6 +200,7 @@ struct SaveTextSheet: View {
     @State private var selectedBook: Book?
     @State private var showingNewBookAlert = false
     @State private var newBookTitle = ""
+    @State private var showingBookPicker = false
     
     var body: some View {
         NavigationStack {
@@ -212,13 +216,25 @@ struct SaveTextSheet: View {
                 }
                 
                 Section("Organization") {
-                    Button("Add to Book...") {
-                        showingNewBookAlert = true
-                    }
-                    
                     if let book = selectedBook {
-                        Text("Book: \(book.title)")
-                            .foregroundColor(.secondary)
+                        HStack {
+                            Text("Book:")
+                            Spacer()
+                            Text(book.title)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Button("Change Book...") {
+                            showingBookPicker = true
+                        }
+                        
+                        Button("Remove from Book", role: .destructive) {
+                            selectedBook = nil
+                        }
+                    } else {
+                        Button("Add to Book...") {
+                            showingBookPicker = true
+                        }
                     }
                 }
             }
@@ -237,12 +253,22 @@ struct SaveTextSheet: View {
                     .disabled(title.isEmpty)
                 }
             }
+            .sheet(isPresented: $showingBookPicker) {
+                BookSelectionView(
+                    selectedBook: $selectedBook,
+                    showingNewBookAlert: $showingNewBookAlert,
+                    newBookTitle: $newBookTitle
+                )
+            }
             .alert("New Book", isPresented: $showingNewBookAlert) {
                 TextField("Book Title", text: $newBookTitle)
-                Button("Cancel", role: .cancel) { }
+                Button("Cancel", role: .cancel) {
+                    newBookTitle = ""
+                }
                 Button("Create") {
                     createNewBook()
                 }
+                .disabled(newBookTitle.isEmpty)
             }
         }
     }
@@ -257,6 +283,11 @@ struct SaveTextSheet: View {
         
         modelContext.insert(capturedText)
         
+        // Update book's updatedAt timestamp
+        if let book = selectedBook {
+            book.updatedAt = Date()
+        }
+        
         do {
             try modelContext.save()
             dismiss()
@@ -266,10 +297,92 @@ struct SaveTextSheet: View {
     }
     
     private func createNewBook() {
+        guard !newBookTitle.isEmpty else { return }
         let book = Book(title: newBookTitle)
         modelContext.insert(book)
-        selectedBook = book
-        newBookTitle = ""
+        
+        do {
+            try modelContext.save()
+            selectedBook = book
+            newBookTitle = ""
+            showingNewBookAlert = false
+            showingBookPicker = false // Close the book picker after creating
+        } catch {
+            print("Error creating book: \(error)")
+        }
+    }
+}
+
+// View for selecting or creating a book
+struct BookSelectionView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
+    @Query(sort: \Book.updatedAt, order: .reverse)
+    private var existingBooks: [Book]
+    
+    @Binding var selectedBook: Book?
+    @Binding var showingNewBookAlert: Bool
+    @Binding var newBookTitle: String
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button(action: {
+                        showingNewBookAlert = true
+                    }) {
+                        Label("Create New Book", systemImage: "plus.circle.fill")
+                            .foregroundColor(.blue)
+                    }
+                }
+                
+                if !existingBooks.isEmpty {
+                    Section("Existing Books") {
+                        ForEach(existingBooks) { book in
+                            Button(action: {
+                                selectedBook = book
+                                dismiss()
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(book.title)
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        
+                                        if let author = book.author {
+                                            Text(author)
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        
+                                        Text("\(book.pageCount) pages")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if selectedBook?.id == book.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Select Book")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 
